@@ -1,0 +1,7 @@
+Based on Apple Creating an Audio Server Driver Plug-in (2024), NullAudio.c.
+Source: https://developer.apple.com/documentation/coreaudio/creating-an-audio-server-driver-plug-in
+Download: https://docs-assets.developer.apple.com/published/430ad6501f6f/CreatingAnAudioServerDriverPlugIn.zip
+Archive SHA256: 860334dfa9e83f2afb749a890ca5a79fc7d3d572d4e116ff9242bec458be4cb0
+Modifications: VoiceBridge identity, 48 kHz default, timestamped stereo loopback, 512-frame delay and clock period, bounded silence fallback, hidden sample controls, input-only default eligibility, virtual transport.
+Apple MIT license retained in APPLE-LICENSE.txt. Transport.h and test code are project additions.
+Additional modifications: fixed 48 kHz, read-only driver counters, clock catch-up and synchronization, no system-default output eligibility.

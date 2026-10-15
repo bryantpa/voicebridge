@@ -1,0 +1,5 @@
+Upstream: https://github.com/xiph/rnnoise
+Commit: 70f1d256acd4b34a572f999a05c87bf00b67730d
+Default model archive SHA-256: 0a8755f8e2d834eff6a54714ecc7d75f9932e845df35f8b59bc52a7cfe6e8b37
+Source and model are vendored unmodified. Portable scalar C build.
+COPYING and source headers contain license notices.

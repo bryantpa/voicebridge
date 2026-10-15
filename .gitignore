@@ -1,0 +1,31 @@
+# Build products and locally signed app/driver bundles
+.build/
+.swiftpm/
+build/
+*.app/
+*.driver/
+*.pkg
+*.zip
+*.dmg
+Assets/VoiceBridge.iconset/
+Assets/VoiceBridge.icns
+
+# Personal audio, diagnostics, and local test fixtures (never publish)
+Reports/
+Samples/
+Fixtures/
+Preview/
+*.caf
+*.wav
+*.aif
+*.aiff
+*.mp3
+*.m4a
+*.pcm
+*.jsonl
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.DS_Store

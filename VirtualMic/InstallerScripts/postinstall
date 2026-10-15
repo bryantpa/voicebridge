@@ -1,0 +1,8 @@
+#!/bin/bash
+set -euo pipefail
+# Installer already obtained administrator authorization. Only restart audio
+# when installing onto the running system, never for an offline target volume.
+if [ "${3:-/}" = "/" ]; then
+  /usr/bin/logger -t VoiceBridge 'Microphone driver installed; restarting the audio service.'
+  /usr/bin/killall coreaudiod
+fi

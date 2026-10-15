@@ -1,0 +1,20 @@
+{
+  "route": "voicebridge",
+  "tests": [
+    {
+      "name": "Routing 1",
+      "mode": "route",
+      "reserveMS": 10
+    },
+    {
+      "name": "Routing 2",
+      "mode": "route",
+      "reserveMS": 10
+    },
+    {
+      "name": "Routing 3",
+      "mode": "route",
+      "reserveMS": 10
+    }
+  ]
+}

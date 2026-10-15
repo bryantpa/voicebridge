@@ -1,0 +1,20 @@
+{
+  "route": "voicebridge",
+  "tests": [
+    {
+      "name": "Full processing 1",
+      "mode": "processed",
+      "reserveMS": 10
+    },
+    {
+      "name": "Full processing 2",
+      "mode": "processed",
+      "reserveMS": 10
+    },
+    {
+      "name": "Full processing 3",
+      "mode": "processed",
+      "reserveMS": 10
+    }
+  ]
+}
