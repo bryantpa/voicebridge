@@ -23,7 +23,7 @@ struct Panel: View {
     @ObservedObject var model: Model
     var body: some View {
         VStack(alignment:.leading,spacing:14) {
-            HStack { Text("VoiceBridge").font(.title.bold());Text("0.5.1-preview · experimental").foregroundStyle(.secondary);Spacer();Circle().fill(model.running ? .green : .gray).frame(width:10,height:10) }
+            HStack { Text("VoiceBridge").font(.title.bold());Text("0.5.2-preview · experimental").foregroundStyle(.secondary);Spacer();Circle().fill(model.running ? .green : .gray).frame(width:10,height:10) }
             Text("XCM-50 → noise and echo processing → virtual microphone").foregroundStyle(.secondary)
             VStack(alignment:.leading,spacing:6) {
                 HStack {
@@ -68,7 +68,7 @@ struct Panel: View {
                     HStack{Button("Mark problem"){model.markProblem()};Button("Show reports"){model.revealReports()};Spacer();Button(model.recording ? "Stop recording" : "Record 10-second sample"){if model.recording{model.finishClip()}else{model.recordClip()}}.disabled(!model.running)}
                     if model.recording { Text(String(format:"● Recording %.1f / 10 seconds",model.recordingSeconds)).foregroundStyle(.red).monospacedDigit() }
                     else { Text(model.recordingStatus).font(.caption).foregroundStyle(.secondary) }
-                    Text("Reports contain local measurements and your note. Audio is saved only when you press Record.").font(.caption).foregroundStyle(.secondary)
+                    Text("Reports contain local measurements and your note. Audio is saved only when you press Record. Automatic logs rotate; saved reports and samples are kept.").font(.caption).foregroundStyle(.secondary)
                     if !model.lastReport.isEmpty{Text(model.lastReport).font(.caption).textSelection(.enabled).lineLimit(2)}
                     if let error=model.diagnostics?.lastError{Text(error).foregroundStyle(.red)}
                 }.padding(6)

@@ -11,7 +11,7 @@ bash build.sh
 bash LatencyCheck/build.sh
 ```
 
-The audio-core and driver tests use AddressSanitizer and UndefinedBehaviorSanitizer. The helper's build runs synthetic known-delay, zero-delay, silence, and missing-capture correlation checks. A successful build does not install the driver or launch either app.
+The audio-core and driver tests use AddressSanitizer and UndefinedBehaviorSanitizer. The main test script also checks diagnostic log rotation and retention against temporary folders, including preservation of explicit reports and recordings. The helper's build runs synthetic known-delay, zero-delay, silence, and missing-capture correlation checks. A successful build does not install the driver or launch either app.
 
 ## Live microphone comparison
 

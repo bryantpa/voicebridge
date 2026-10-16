@@ -91,7 +91,7 @@ Closing the window keeps VoiceBridge in the menu bar. **Stopping or quitting Voi
 
 A low meter is not itself an error: RNNoise can suppress a quiet room almost completely. Look for moving input/output frame counters and check the selected input in the receiving app. Increasing underruns or dropped frames suggests buffering trouble. A missing speaker reference means echo cancellation may be bypassing; a healthy reference only proves data is arriving, not that echo is removed well.
 
-Reports live under `~/Library/Application Support/VoiceBridge/Reports`. Session logs are capped at approximately 8 MB; marked problems include up to 180 recent events. Explicit samples are separate CAF files. Old sessions are not automatically deleted.
+Reports live under `~/Library/Application Support/VoiceBridge/Reports`. Automatic logs rotate at 8 MB, retaining the current file and one previous file per session. On startup, rotation, and hourly while logging, automatic logs from older sessions are removed after seven days or oldest-first to bring automatic log storage under a 64 MB budget. Empty session folders are removed. Marked problem reports (including up to 180 recent events) and explicitly recorded CAF samples are preserved until you delete them; they are outside this budget.
 
 **Privacy:** VoiceBridge has no upload or telemetry service. Live audio is processed in memory. Speaker-reference audio is not saved. Microphone audio is saved only through explicit sample recording. Reports can contain device names/UIDs, local file paths, timestamps, and your notes; they are not anonymized. Recordings, reports, local fixtures, and compiled apps are excluded from this repository.
 
