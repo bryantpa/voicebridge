@@ -9,7 +9,8 @@ struct Device: Identifiable, Codable, Hashable {
     let sampleRate: Double
     let transport: UInt32
     var voiceBridgeMic: Bool { uid == "VoiceBridgeMicDevice_UID" }
-    var processedDestination: Bool { outputs == 2 && (voiceBridgeMic || uid == "RodeUnifyAudioDevice_UID_6") }
+    var unify: Bool { uid == "RodeUnifyAudioDevice_UID_6" }
+    var processedDestination: Bool { outputs == 2 && (voiceBridgeMic || unify) }
     var physical: Bool { transport != kAudioDeviceTransportTypeVirtual && transport != kAudioDeviceTransportTypeAggregate }
 }
 enum Devices {
@@ -50,5 +51,6 @@ enum Devices {
         guard let data=value.data(using:.utf8) else {return nil}
         return (try? JSONSerialization.jsonObject(with:data)) as? [String:Any]
     }
+    static var defaultInput: UInt32 { scalar(AudioObjectID(kAudioObjectSystemObject),kAudioHardwarePropertyDefaultInputDevice,fallback:UInt32(0)) }
     static var defaultOutput: UInt32 { scalar(AudioObjectID(kAudioObjectSystemObject),kAudioHardwarePropertyDefaultOutputDevice,fallback:UInt32(0)) }
 }

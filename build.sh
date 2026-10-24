@@ -17,7 +17,7 @@ with open(sys.argv[1], 'wb') as f:
       'CFBundleIconFile':'VoiceBridge.icns',
       'CFBundlePackageType':'APPL','CFBundleShortVersionString':'0.5.2-preview','CFBundleVersion':'1',
       'LSMinimumSystemVersion':'14.4','NSHighResolutionCapable':True,'LSUIElement':True,
-      'NSMicrophoneUsageDescription':'VoiceBridge processes your RØDE microphone locally to test echo cancellation and noise suppression. Audio is recorded only when you press the sample button.',
+      'NSMicrophoneUsageDescription':'VoiceBridge processes your microphone locally to reduce background noise and test echo cancellation. Audio is recorded only when you press the sample button.',
       'NSAudioCaptureUsageDescription':'VoiceBridge uses the selected speaker output as a local reference for experimental echo cancellation. Speaker audio is not saved or uploaded.',
     },f)
 PY

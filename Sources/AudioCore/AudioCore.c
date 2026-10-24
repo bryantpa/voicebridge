@@ -174,15 +174,15 @@ int32_t vb_start(VBEngine *e,uint32_t mic,uint32_t speaker,uint32_t dest,bool se
     TRY(AudioUnitInitialize(e->voice),"Initialize microphone input");
     e->actual_input=current(e->voice,use_rnnoise?0:1);e->actual_speaker=use_rnnoise?speaker:current(e->voice,0);
     if(sending){
-        TRY(make(kAudioUnitSubType_HALOutput,&e->destination),"Create UNIFY output");
-        TRY(PROP(e->destination,kAudioOutputUnitProperty_CurrentDevice,kAudioUnitScope_Global,0,dest),"Select UNIFY output");
+        TRY(make(kAudioUnitSubType_HALOutput,&e->destination),"Create virtual microphone output");
+        TRY(PROP(e->destination,kAudioOutputUnitProperty_CurrentDevice,kAudioUnitScope_Global,0,dest),"Select virtual microphone output");
         AudioStreamBasicDescription stereo=format(2);AURenderCallbackStruct out={output,e};
-        TRY(PROP(e->destination,kAudioUnitProperty_StreamFormat,kAudioUnitScope_Input,0,stereo),"Set UNIFY client format");
-        TRY(PROP(e->destination,kAudioUnitProperty_SetRenderCallback,kAudioUnitScope_Input,0,out),"Install UNIFY output callback");
-        TRY(AudioUnitInitialize(e->destination),"Initialize UNIFY output");e->actual_destination=current(e->destination,0);
+        TRY(PROP(e->destination,kAudioUnitProperty_StreamFormat,kAudioUnitScope_Input,0,stereo),"Set virtual microphone client format");
+        TRY(PROP(e->destination,kAudioUnitProperty_SetRenderCallback,kAudioUnitScope_Input,0,out),"Install virtual microphone callback");
+        TRY(AudioUnitInitialize(e->destination),"Initialize virtual microphone output");e->actual_destination=current(e->destination,0);
     }
     TRY(AudioOutputUnitStart(e->voice),"Start microphone processing");
-    if(sending)TRY(AudioOutputUnitStart(e->destination),"Start UNIFY output");
+    if(sending)TRY(AudioOutputUnitStart(e->destination),"Start virtual microphone output");
     return noErr;
 }
 int32_t vb_bypass(VBEngine *e,bool b){if(!e||!e->voice)return -50;if(e->use_rnnoise){atomic_store(&e->bypass,b);return noErr;}UInt32 v=b;OSStatus s=PROP(e->voice,kAUVoiceIOProperty_BypassVoiceProcessing,kAudioUnitScope_Global,0,v);if(!s)e->bypass=b;return s;}

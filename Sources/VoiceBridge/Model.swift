@@ -79,10 +79,12 @@ import CoreAudio
     }
     func refresh() {
         devices = Devices.all()
-        if micUID.isEmpty { micUID = devices.first(where:{$0.inputs>0 && $0.name.contains("XCM")})?.uid ?? devices.first(where:{$0.inputs>0 && $0.physical})?.uid ?? "" }
+        if micUID.isEmpty { micUID = devices.first(where:{$0.inputs>0 && $0.physical && $0.id == Devices.defaultInput})?.uid ?? devices.first(where:{$0.inputs>0 && $0.physical})?.uid ?? "" }
         if speakerUID.isEmpty { speakerUID = devices.first(where:{$0.outputs>0 && $0.physical && $0.id == Devices.defaultOutput})?.uid ?? devices.first(where:{$0.outputs>0 && $0.name.contains("Speakers")})?.uid ?? "" }
         if destinationUID.isEmpty { destinationUID = devices.first(where:{$0.processedDestination})?.uid ?? "" }
     }
+    var micName: String { devices.first(where:{$0.uid==micUID})?.name ?? "Microphone" }
+    var unifySelected: Bool { devices.contains(where:{$0.unify && $0.uid==destinationUID}) }
     var ownMicrophoneAvailable: Bool {
         devices.contains(where:{$0.voiceBridgeMic && $0.inputs==2 && $0.outputs==2 && $0.sampleRate==48000})
     }
@@ -144,10 +146,16 @@ import CoreAudio
         defer { starting=false }
         refresh()
         guard let mic=devices.first(where:{$0.uid==micUID && $0.inputs>0 && $0.physical}),let speaker=devices.first(where:{$0.uid==speakerUID && $0.outputs>0 && $0.physical}) else { status="Select a physical microphone and physical speakers.";return }
+        // Direct HAL input does not resample, and the speaker tap requires 48 kHz.
+        if backend=="RNNoise",let device=([mic]+(echoEnabled ? [speaker] : [])).first(where:{$0.sampleRate != 48000}) {
+            status="\(device.name) is set to \(Int(device.sampleRate)) Hz. VoiceBridge needs 48 kHz: open Audio MIDI Setup, select \(device.name), set Format to 48,000 Hz, then press Start."
+            diagnostics?.event("start_blocked",["reason":"sample rate","deviceUID":device.uid,"rate":device.sampleRate]);return
+        }
         let destination=devices.first(where:{$0.uid==destinationUID && $0.processedDestination})
         if sending {
-            guard destination != nil else { status="Selected virtual microphone output is missing. Install the VoiceBridge driver or open UNIFY, then refresh devices.";return }
-            guard !NSRunningApplication.runningApplications(withBundleIdentifier:"com.obsproject.obs-studio").contains(where:{!$0.isTerminated}) else { status="Quit OBS before sending processed audio, so two mic signals cannot mix. Analysis mode works with OBS open.";return }
+            guard let destination else { status="Selected virtual microphone output is missing. Set up VoiceBridge Microphone or open UNIFY, then refresh devices.";return }
+            // The original UNIFY route could also receive OBS's microphone feed.
+            guard !destination.unify || !obsRunning else { status="Quit OBS before sending processed audio to UNIFY, so two mic signals cannot mix. Analysis mode works with OBS open.";return }
         }
         selectedDevices=[mic,speaker]+(sending ? (destination.map{[$0]} ?? []) : [])
         guard let e=vb_create() else { status="Could not allocate audio buffers.";return }
@@ -203,8 +211,9 @@ import CoreAudio
         if s.render_error != 0 || noInputTicks>=5 || (sending && noOutputTicks>=5) { stop(reason:"Stopped after audio failure. Mark a problem to save diagnostics.");return }
         let current=Devices.all()
         if selectedDevices.contains(where:{selected in !current.contains(where:{$0.uid==selected.uid && $0.id==selected.id})}) { stop(reason:"Audio device changed or disconnected. Refresh devices and restart.");return }
-        if sending && NSRunningApplication.runningApplications(withBundleIdentifier:"com.obsproject.obs-studio").contains(where:{!$0.isTerminated}) { stop(reason:"OBS opened. VoiceBridge stopped to prevent duplicate mic audio.") }
+        if sending && selectedDevices.contains(where:{$0.unify}) && obsRunning { stop(reason:"OBS opened. VoiceBridge stopped to prevent duplicate mic audio on UNIFY.") }
     }
+    private var obsRunning: Bool { NSRunningApplication.runningApplications(withBundleIdentifier:"com.obsproject.obs-studio").contains(where:{!$0.isTerminated}) }
     func configuration() -> [String:Any] { ["build":"0.5.2-preview","backend":backend,"outputReserveMS":10,"captureAPI":backend=="RNNoise" ? "Direct HAL input" : "VoiceProcessingIO","rnnoiseCommit":"70f1d256acd4b34a572f999a05c87bf00b67730d","micUID":micUID,"speakerUID":speakerUID,"destinationUID":destinationUID,"sending":sending,"bypassed":bypass,"automaticGain":agc,"sampleRate":48000,"echoEnabled":echoEnabled && backend=="RNNoise","aecValidation":echoEnabled ? "SpeexDSP + speaker tap — not acoustically verified" : (backend=="RNNoise" ? "disabled — RNNoise only" : "Apple not acoustically verified"),"reference":echoEnabled ? "Private unmuted Core Audio tap of selected speaker output; VoiceBridge excluded; timestamp-aligned reference" : "macOS VoiceProcessingIO physical output device; own render callback supplies silence","devices":deviceJSON(),"permission":AVCaptureDevice.authorizationStatus(for:.audio).rawValue] }
     func deviceJSON() -> [[String:Any]] { devices.map{["id":$0.id,"uid":$0.uid,"name":$0.name,"inputs":$0.inputs,"outputs":$0.outputs,"rate":$0.sampleRate,"transport":$0.transport]} }
     func statsJSON(_ s: VBStats) -> [String:Any] { ["echoEnabled":s.echo_enabled,"echo":echoJSON(s.echo),"rnnoiseEnabled":s.rnnoise_enabled,"rnnoiseSpeechProbability":s.rnnoise_speech_probability,"processingMS":s.processing_ms,"inputBlockFrames":s.input_block_frames,"inputBlockMS":Double(s.input_block_frames)/48.0,"callbackAgeMS":s.callback_age_ms,"inputFrames":s.input_frames,"outputFrames":s.output_frames,"inputCallbacks":s.input_callbacks,"outputCallbacks":s.output_callbacks,"speakerIOCallbacks":s.reference_callbacks,"rmsDBFS":s.rms_db,"peakDBFS":s.peak_db,"queueMS":s.queue_ms,"rateRatio":s.rate_ratio,"underruns":s.underruns,"overflowFrames":s.overflows,"clippedSamples":s.clipped_samples,"invalidSamples":s.invalid_samples,"renderError":s.render_error,"duckingStatus":s.ducking_status,"actualInputID":s.actual_input,"actualSpeakerID":s.actual_speaker,"actualDestinationID":s.actual_destination,"lastInputHostTime":s.last_input_host_time,"lastOutputHostTime":s.last_output_host_time,"bypassed":s.bypass,"agc":s.agc,"recordingDrops":engine.map{vb_recording_drops($0)} ?? 0] }

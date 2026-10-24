@@ -2,6 +2,8 @@
 
 # VoiceBridge
 
+[![Tests](https://github.com/bryantpa/voicebridge/actions/workflows/test.yml/badge.svg)](https://github.com/bryantpa/voicebridge/actions/workflows/test.yml)
+
 A small macOS menu-bar app that turns a physical microphone into a processed virtual microphone, with local noise suppression, experimental speaker-echo cancellation, and diagnostics you can use to understand what went wrong.
 
 Built while trying to keep keyboard clicks and speaker audio out of calls with a RØDE XCM-50. The priority is observability: hear a problem, mark it, inspect the measurements, improve the code.
@@ -147,7 +149,8 @@ See [Testing and measurement](docs/testing.md) for the automatic loop, fixture h
 - This is a personal prototype, with limited hardware coverage and no long-duration reliability qualification.
 - Speech quality and speaker-echo performance still require listening tests, especially while both people speak.
 - Idle speaker hardware can stop supplying reference samples. The app exposes missing-reference counters and skips echo processing for missing samples.
-- The app deliberately refuses to send while OBS is running, and stops if OBS opens, to prevent accidental duplicate microphone feeds from the original setup.
+- With the RNNoise filter, the microphone must run at 48 kHz, and so must the speakers when echo cancellation is on. VoiceBridge checks before starting; change the rate in Audio MIDI Setup.
+- When sending to the original RØDE UNIFY route, the app refuses to send while OBS is running, and stops if OBS opens, to prevent duplicate microphone feeds. This does not apply to VoiceBridge Microphone.
 - Sleep and device changes stop capture; manual restart is required.
 - The virtual microphone is installed system-wide. Quit VoiceBridge before replacing the driver, and do not install during calls.
 

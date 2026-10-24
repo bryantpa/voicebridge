@@ -24,7 +24,7 @@ struct Panel: View {
     var body: some View {
         VStack(alignment:.leading,spacing:14) {
             HStack { Text("VoiceBridge").font(.title.bold());Text("0.5.2-preview · experimental").foregroundStyle(.secondary);Spacer();Circle().fill(model.running ? .green : .gray).frame(width:10,height:10) }
-            Text("XCM-50 → noise and echo processing → virtual microphone").foregroundStyle(.secondary)
+            Text("\(model.micName) → noise and echo processing → virtual microphone").foregroundStyle(.secondary)
             VStack(alignment:.leading,spacing:6) {
                 HStack {
                     Button(model.setupWaiting ? "Waiting for microphone…" : (model.ownMicrophoneAvailable ? "Use VoiceBridge Microphone" : "Set up VoiceBridge Microphone…")) {model.setupMicrophone()}
@@ -73,7 +73,7 @@ struct Panel: View {
                     if let error=model.diagnostics?.lastError{Text(error).foregroundStyle(.red)}
                 }.padding(6)
             }
-            Text("Close this window to keep running in the menu bar. Select VoiceBridge Microphone in calls when using its driver. For the UNIFY destination, keep UNIFY running and select RØDE Unify Chat. Stop before changing the destination.").font(.caption).foregroundStyle(.secondary)
+            Text("Close this window to keep running in the menu bar. Select VoiceBridge Microphone in calls when using its driver."+(model.unifySelected ? " For the UNIFY destination, keep UNIFY running and select RØDE Unify Chat." : "")+" Stop before changing the destination.").font(.caption).foregroundStyle(.secondary)
         }.padding(22).frame(width:740)
     }
 }
