@@ -115,6 +115,7 @@ enum
 	kObjectID_PlugIn					= kAudioObjectPlugInObject,
 	kObjectID_Box						= 2,
 	kObjectID_Device					= 3,
+    kObjectID_Feed = 13,
 	kObjectID_Stream_Input				= 4,
 	kObjectID_Volume_Input_Master		= 5,
 	kObjectID_Mute_Input_Master			= 6,
@@ -125,6 +126,17 @@ enum
 	kObjectID_DataSource_Output_Master	= 11,
 	kObjectID_DataDestination_PlayThru_Master	= 12
 };
+
+// Public input and hidden feed deliberately have no opposite-direction streams.
+// Hidden is a UI/discovery property, not an access-control boundary.
+static bool vm_device(AudioObjectID id) { return id==kObjectID_Device || id==kObjectID_Feed; }
+static bool vm_scope(AudioObjectID id, AudioObjectPropertyScope scope) {
+    return scope==kAudioObjectPropertyScopeGlobal ||
+        scope==(id==kObjectID_Feed?kAudioObjectPropertyScopeOutput:kAudioObjectPropertyScopeInput);
+}
+static AudioObjectID vm_stream(AudioObjectID id) { return id==kObjectID_Feed?kObjectID_Stream_Output:kObjectID_Stream_Input; }
+#define kFeed_UID "VoiceBridgeFeedDevice_UID"
+static UInt64 gRunningByDevice[2]; // Protected by gPlugIn_StateMutex.
 
 //	Declare the stuff that tracks the state of the plug-in, the device and its sub-objects.
 //	Note that we use global variables here because this driver only ever has a single device. If
@@ -496,7 +508,7 @@ static OSStatus	VoiceBridgeMic_AddDeviceClient(AudioServerPlugInDriverRef inDriv
 	
 	//	check the arguments
 	FailWithAction(inDriver != gAudioServerPlugInDriverRef, theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_AddDeviceClient: bad driver reference");
-	FailWithAction(inDeviceObjectID != kObjectID_Device, theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_AddDeviceClient: bad device ID");
+	FailWithAction(!vm_device(inDeviceObjectID), theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_AddDeviceClient: bad device ID");
 
 Done:
 	return theAnswer;
@@ -515,7 +527,7 @@ static OSStatus	VoiceBridgeMic_RemoveDeviceClient(AudioServerPlugInDriverRef inD
 	
 	//	check the arguments
 	FailWithAction(inDriver != gAudioServerPlugInDriverRef, theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_RemoveDeviceClient: bad driver reference");
-	FailWithAction(inDeviceObjectID != kObjectID_Device, theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_RemoveDeviceClient: bad device ID");
+	FailWithAction(!vm_device(inDeviceObjectID), theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_RemoveDeviceClient: bad device ID");
 
 Done:
 	return theAnswer;
@@ -544,7 +556,7 @@ static OSStatus	VoiceBridgeMic_PerformDeviceConfigurationChange(AudioServerPlugI
 	
 	//	check the arguments
 	FailWithAction(inDriver != gAudioServerPlugInDriverRef, theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_PerformDeviceConfigurationChange: bad driver reference");
-	FailWithAction(inDeviceObjectID != kObjectID_Device, theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_PerformDeviceConfigurationChange: bad device ID");
+	FailWithAction(!vm_device(inDeviceObjectID), theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_PerformDeviceConfigurationChange: bad device ID");
 	FailWithAction((inChangeAction != 48000) && (inChangeAction != 48000), theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_PerformDeviceConfigurationChange: bad sample rate");
 	
 	//	lock the state mutex
@@ -583,7 +595,7 @@ static OSStatus	VoiceBridgeMic_AbortDeviceConfigurationChange(AudioServerPlugInD
 	
 	//	check the arguments
 	FailWithAction(inDriver != gAudioServerPlugInDriverRef, theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_PerformDeviceConfigurationChange: bad driver reference");
-	FailWithAction(inDeviceObjectID != kObjectID_Device, theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_PerformDeviceConfigurationChange: bad device ID");
+	FailWithAction(!vm_device(inDeviceObjectID), theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_PerformDeviceConfigurationChange: bad device ID");
 
 Done:
 	return theAnswer;
@@ -615,6 +627,7 @@ static Boolean	VoiceBridgeMic_HasProperty(AudioServerPlugInDriverRef inDriver, A
 			theAnswer = VoiceBridgeMic_HasBoxProperty(inDriver, inObjectID, inClientProcessID, inAddress);
 			break;
 		
+		case kObjectID_Feed:
 		case kObjectID_Device:
 			theAnswer = VoiceBridgeMic_HasDeviceProperty(inDriver, inObjectID, inClientProcessID, inAddress);
 			break;
@@ -665,6 +678,7 @@ static OSStatus	VoiceBridgeMic_IsPropertySettable(AudioServerPlugInDriverRef inD
 			theAnswer = VoiceBridgeMic_IsBoxPropertySettable(inDriver, inObjectID, inClientProcessID, inAddress, outIsSettable);
 			break;
 		
+		case kObjectID_Feed:
 		case kObjectID_Device:
 			theAnswer = VoiceBridgeMic_IsDevicePropertySettable(inDriver, inObjectID, inClientProcessID, inAddress, outIsSettable);
 			break;
@@ -718,6 +732,7 @@ static OSStatus	VoiceBridgeMic_GetPropertyDataSize(AudioServerPlugInDriverRef in
 			theAnswer = VoiceBridgeMic_GetBoxPropertyDataSize(inDriver, inObjectID, inClientProcessID, inAddress, inQualifierDataSize, inQualifierData, outDataSize);
 			break;
 		
+		case kObjectID_Feed:
 		case kObjectID_Device:
 			theAnswer = VoiceBridgeMic_GetDevicePropertyDataSize(inDriver, inObjectID, inClientProcessID, inAddress, inQualifierDataSize, inQualifierData, outDataSize);
 			break;
@@ -772,6 +787,7 @@ static OSStatus	VoiceBridgeMic_GetPropertyData(AudioServerPlugInDriverRef inDriv
 			theAnswer = VoiceBridgeMic_GetBoxPropertyData(inDriver, inObjectID, inClientProcessID, inAddress, inQualifierDataSize, inQualifierData, inDataSize, outDataSize, outData);
 			break;
 		
+		case kObjectID_Feed:
 		case kObjectID_Device:
 			theAnswer = VoiceBridgeMic_GetDevicePropertyData(inDriver, inObjectID, inClientProcessID, inAddress, inQualifierDataSize, inQualifierData, inDataSize, outDataSize, outData);
 			break;
@@ -824,6 +840,7 @@ static OSStatus	VoiceBridgeMic_SetPropertyData(AudioServerPlugInDriverRef inDriv
 			theAnswer = VoiceBridgeMic_SetBoxPropertyData(inDriver, inObjectID, inClientProcessID, inAddress, inQualifierDataSize, inQualifierData, inDataSize, inData, &theNumberPropertiesChanged, theChangedAddresses);
 			break;
 		
+		case kObjectID_Feed:
 		case kObjectID_Device:
 			theAnswer = VoiceBridgeMic_SetDevicePropertyData(inDriver, inObjectID, inClientProcessID, inAddress, inQualifierDataSize, inQualifierData, inDataSize, inData, &theNumberPropertiesChanged, theChangedAddresses);
 			break;
@@ -985,14 +1002,7 @@ static OSStatus	VoiceBridgeMic_GetPlugInPropertyDataSize(AudioServerPlugInDriver
 			break;
 			
 		case kAudioObjectPropertyOwnedObjects:
-			if(gBox_Acquired)
-			{
-				*outDataSize = 2 * sizeof(AudioClassID);
-			}
-			else
-			{
-				*outDataSize = sizeof(AudioClassID);
-			}
+            *outDataSize=(gBox_Acquired?3:1)*sizeof(AudioObjectID);
 			break;
 			
 		case kAudioPlugInPropertyBoxList:
@@ -1004,14 +1014,7 @@ static OSStatus	VoiceBridgeMic_GetPlugInPropertyDataSize(AudioServerPlugInDriver
 			break;
 			
 		case kAudioPlugInPropertyDeviceList:
-			if(gBox_Acquired)
-			{
-				*outDataSize = sizeof(AudioClassID);
-			}
-			else
-			{
-				*outDataSize = 0;
-			}
+            *outDataSize=(gBox_Acquired?2:0)*sizeof(AudioObjectID);
 			break;
 			
 		case kAudioPlugInPropertyTranslateUIDToDevice:
@@ -1094,30 +1097,9 @@ static OSStatus	VoiceBridgeMic_GetPlugInPropertyData(AudioServerPlugInDriverRef 
 			break;
 			
 		case kAudioObjectPropertyOwnedObjects:
-			//	Calculate the number of items that have been requested. Note that this
-			//	number is allowed to be smaller than the actual size of the list. In such
-			//	case, only that number of items will be returned
-			theNumberItemsToFetch = inDataSize / sizeof(AudioObjectID);
-			
-			//	Clamp that to the number of boxes this driver implements (which is just 1)
-			if(theNumberItemsToFetch > (gBox_Acquired ? 2 : 1))
-			{
-				theNumberItemsToFetch = (gBox_Acquired ? 2 : 1);
-			}
-			
-			//	Write the devices' object IDs into the return value
-			if(theNumberItemsToFetch > 1)
-			{
-				((AudioObjectID*)outData)[0] = kObjectID_Box;
-				((AudioObjectID*)outData)[0] = kObjectID_Device;
-			}
-			else if(theNumberItemsToFetch > 0)
-			{
-				((AudioObjectID*)outData)[0] = kObjectID_Box;
-			}
-			
-			//	Return how many bytes we wrote to
-			*outDataSize = theNumberItemsToFetch * sizeof(AudioClassID);
+            { AudioObjectID ids[]={kObjectID_Box,kObjectID_Device,kObjectID_Feed};
+              UInt32 n=inDataSize/sizeof(AudioObjectID),available=gBox_Acquired?3:1;
+              if(n>available)n=available;memcpy(outData,ids,n*sizeof(AudioObjectID));*outDataSize=n*sizeof(AudioObjectID); }
 			break;
 			
 		case kAudioPlugInPropertyBoxList:
@@ -1163,26 +1145,9 @@ static OSStatus	VoiceBridgeMic_GetPlugInPropertyData(AudioServerPlugInDriverRef 
 			break;
 			
 		case kAudioPlugInPropertyDeviceList:
-			//	Calculate the number of items that have been requested. Note that this
-			//	number is allowed to be smaller than the actual size of the list. In such
-			//	case, only that number of items will be returned
-			theNumberItemsToFetch = inDataSize / sizeof(AudioObjectID);
-			
-			//	Clamp that to the number of devices this driver implements (which is just 1 if the
-			//	box has been acquired)
-			if(theNumberItemsToFetch > (gBox_Acquired ? 1 : 0))
-			{
-				theNumberItemsToFetch = (gBox_Acquired ? 1 : 0);
-			}
-			
-			//	Write the devices' object IDs into the return value
-			if(theNumberItemsToFetch > 0)
-			{
-				((AudioObjectID*)outData)[0] = kObjectID_Device;
-			}
-			
-			//	Return how many bytes we wrote to
-			*outDataSize = theNumberItemsToFetch * sizeof(AudioClassID);
+            { AudioObjectID ids[]={kObjectID_Device,kObjectID_Feed};
+              UInt32 n=inDataSize/sizeof(AudioObjectID),available=gBox_Acquired?2:0;
+              if(n>available)n=available;memcpy(outData,ids,n*sizeof(AudioObjectID));*outDataSize=n*sizeof(AudioObjectID); }
 			break;
 			
 		case kAudioPlugInPropertyTranslateUIDToDevice:
@@ -1198,6 +1163,9 @@ static OSStatus	VoiceBridgeMic_GetPlugInPropertyData(AudioServerPlugInDriverRef 
 			{
 				*((AudioObjectID*)outData) = kObjectID_Device;
 			}
+            else if(CFEqual(*((CFStringRef*)inQualifierData),CFSTR(kFeed_UID))) {
+                *((AudioObjectID*)outData)=kObjectID_Feed;
+            }
 			else
 			{
 				*((AudioObjectID*)outData) = kAudioObjectUnknown;
@@ -1485,7 +1453,7 @@ static OSStatus	VoiceBridgeMic_GetBoxPropertyDataSize(AudioServerPlugInDriverRef
 		case kAudioBoxPropertyDeviceList:
 			{
 				pthread_mutex_lock(&gPlugIn_StateMutex);
-				*outDataSize = gBox_Acquired ? sizeof(AudioObjectID) : 0;
+				*outDataSize = gBox_Acquired ? 2*sizeof(AudioObjectID) : 0;
 				pthread_mutex_unlock(&gPlugIn_StateMutex);
 			}
 			break;
@@ -1653,22 +1621,12 @@ static OSStatus	VoiceBridgeMic_GetBoxPropertyData(AudioServerPlugInDriverRef inD
 			*outDataSize = sizeof(UInt32);
 			break;
 			
-		case kAudioBoxPropertyDeviceList:
-			//	This is used to indicate which devices came from this box
-			pthread_mutex_lock(&gPlugIn_StateMutex);
-			if(gBox_Acquired)
-			{
-				FailWithAction(inDataSize < sizeof(AudioObjectID), theAnswer = kAudioHardwareBadPropertySizeError, Done, "VoiceBridgeMic_GetBoxPropertyData: not enough space for the return value of kAudioBoxPropertyDeviceList for the box");
-				*((AudioObjectID*)outData) = kObjectID_Device;
-				*outDataSize = sizeof(AudioObjectID);
-			}
-			else
-			{
-				*outDataSize = 0;
-			}
-			pthread_mutex_unlock(&gPlugIn_StateMutex);
-			break;
-			
+        case kAudioBoxPropertyDeviceList: {
+            AudioObjectID ids[]={kObjectID_Device,kObjectID_Feed};
+            UInt32 n=inDataSize/sizeof(AudioObjectID),available=gBox_Acquired?2:0;
+            if(n>available)n=available;memcpy(outData,ids,n*sizeof(AudioObjectID));*outDataSize=n*sizeof(AudioObjectID);
+        } break;
+
 		default:
 			theAnswer = kAudioHardwareUnknownPropertyError;
 			break;
@@ -1784,7 +1742,7 @@ Done:
 
 static Boolean	VoiceBridgeMic_HasDeviceProperty(AudioServerPlugInDriverRef inDriver, AudioObjectID inObjectID, pid_t inClientProcessID, const AudioObjectPropertyAddress* inAddress)
 {
-    if(inDriver == gAudioServerPlugInDriverRef && inAddress && inObjectID == kObjectID_Device) {
+    if(inDriver == gAudioServerPlugInDriverRef && inAddress && vm_device(inObjectID)) {
         if((inAddress->mSelector == 'vbst' || inAddress->mSelector == kAudioObjectPropertyCustomPropertyInfoList)) return true;
     }
 	//	This method returns whether or not the given object has the given property.
@@ -1797,7 +1755,7 @@ static Boolean	VoiceBridgeMic_HasDeviceProperty(AudioServerPlugInDriverRef inDri
 	//	check the arguments
 	FailIf(inDriver != gAudioServerPlugInDriverRef, Done, "VoiceBridgeMic_HasDeviceProperty: bad driver reference");
 	FailIf(inAddress == NULL, Done, "VoiceBridgeMic_HasDeviceProperty: no address");
-	FailIf(inObjectID != kObjectID_Device, Done, "VoiceBridgeMic_HasDeviceProperty: not the device object");
+	FailIf(!vm_device(inObjectID), Done, "VoiceBridgeMic_HasDeviceProperty: not the device object");
 	
 	//	Note that for each object, this driver implements all the required properties plus a few
 	//	extras that are useful but not required. There is more detailed commentary about each
@@ -1847,7 +1805,7 @@ Done:
 
 static OSStatus	VoiceBridgeMic_IsDevicePropertySettable(AudioServerPlugInDriverRef inDriver, AudioObjectID inObjectID, pid_t inClientProcessID, const AudioObjectPropertyAddress* inAddress, Boolean* outIsSettable)
 {
-    if(inDriver == gAudioServerPlugInDriverRef && inAddress && inObjectID == kObjectID_Device && (inAddress->mSelector == 'vbst' || inAddress->mSelector == kAudioObjectPropertyCustomPropertyInfoList)) {
+    if(inDriver == gAudioServerPlugInDriverRef && inAddress && vm_device(inObjectID) && (inAddress->mSelector == 'vbst' || inAddress->mSelector == kAudioObjectPropertyCustomPropertyInfoList)) {
         if(!outIsSettable) return kAudioHardwareIllegalOperationError;
         *outIsSettable=false;return 0;
     }
@@ -1863,7 +1821,7 @@ static OSStatus	VoiceBridgeMic_IsDevicePropertySettable(AudioServerPlugInDriverR
 	FailWithAction(inDriver != gAudioServerPlugInDriverRef, theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_IsDevicePropertySettable: bad driver reference");
 	FailWithAction(inAddress == NULL, theAnswer = kAudioHardwareIllegalOperationError, Done, "VoiceBridgeMic_IsDevicePropertySettable: no address");
 	FailWithAction(outIsSettable == NULL, theAnswer = kAudioHardwareIllegalOperationError, Done, "VoiceBridgeMic_IsDevicePropertySettable: no place to put the return value");
-	FailWithAction(inObjectID != kObjectID_Device, theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_IsDevicePropertySettable: not the device object");
+	FailWithAction(!vm_device(inObjectID), theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_IsDevicePropertySettable: not the device object");
 	
 	//	Note that for each object, this driver implements all the required properties plus a few
 	//	extras that are useful but not required. There is more detailed commentary about each
@@ -1914,14 +1872,14 @@ Done:
 
 static OSStatus	VoiceBridgeMic_GetDevicePropertyDataSize(AudioServerPlugInDriverRef inDriver, AudioObjectID inObjectID, pid_t inClientProcessID, const AudioObjectPropertyAddress* inAddress, UInt32 inQualifierDataSize, const void* inQualifierData, UInt32* outDataSize)
 {
-    if(inDriver == gAudioServerPlugInDriverRef && inAddress && inObjectID == kObjectID_Device && (inAddress->mSelector == 'vbst' || inAddress->mSelector == kAudioObjectPropertyCustomPropertyInfoList)) {
+    if(inDriver == gAudioServerPlugInDriverRef && inAddress && vm_device(inObjectID) && (inAddress->mSelector == 'vbst' || inAddress->mSelector == kAudioObjectPropertyCustomPropertyInfoList)) {
         if(!outDataSize) return kAudioHardwareIllegalOperationError;
         *outDataSize=inAddress->mSelector=='vbst'?sizeof(CFStringRef):sizeof(AudioServerPlugInCustomPropertyInfo);return 0;
     }
-    if(inObjectID == kObjectID_Device && inDriver == gAudioServerPlugInDriverRef) {
+    if(vm_device(inObjectID) && inDriver == gAudioServerPlugInDriverRef && inAddress && outDataSize) {
         if(inAddress->mSelector == kAudioObjectPropertyControlList) { *outDataSize=0;return 0; }
-        if(inAddress->mSelector == kAudioObjectPropertyOwnedObjects) {
-            *outDataSize=(inAddress->mScope==kAudioObjectPropertyScopeGlobal?2:1)*sizeof(AudioObjectID);return 0;
+        if(inAddress->mSelector == kAudioObjectPropertyOwnedObjects || inAddress->mSelector == kAudioDevicePropertyStreams) {
+            *outDataSize=vm_scope(inObjectID,inAddress->mScope)?sizeof(AudioObjectID):0;return 0;
         }
     }
 	//	This method returns the byte size of the property's data.
@@ -1935,7 +1893,7 @@ static OSStatus	VoiceBridgeMic_GetDevicePropertyDataSize(AudioServerPlugInDriver
 	FailWithAction(inDriver != gAudioServerPlugInDriverRef, theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_GetDevicePropertyDataSize: bad driver reference");
 	FailWithAction(inAddress == NULL, theAnswer = kAudioHardwareIllegalOperationError, Done, "VoiceBridgeMic_GetDevicePropertyDataSize: no address");
 	FailWithAction(outDataSize == NULL, theAnswer = kAudioHardwareIllegalOperationError, Done, "VoiceBridgeMic_GetDevicePropertyDataSize: no place to put the return value");
-	FailWithAction(inObjectID != kObjectID_Device, theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_GetDevicePropertyDataSize: not the device object");
+	FailWithAction(!vm_device(inObjectID), theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_GetDevicePropertyDataSize: not the device object");
 	
 	//	Note that for each object, this driver implements all the required properties plus a few
 	//	extras that are useful but not required. There is more detailed commentary about each
@@ -2087,7 +2045,7 @@ Done:
 
 static OSStatus	VoiceBridgeMic_GetDevicePropertyData(AudioServerPlugInDriverRef inDriver, AudioObjectID inObjectID, pid_t inClientProcessID, const AudioObjectPropertyAddress* inAddress, UInt32 inQualifierDataSize, const void* inQualifierData, UInt32 inDataSize, UInt32* outDataSize, void* outData)
 {
-    if(inDriver == gAudioServerPlugInDriverRef && inAddress && inObjectID == kObjectID_Device && (inAddress->mSelector == 'vbst' || inAddress->mSelector == kAudioObjectPropertyCustomPropertyInfoList)) {
+    if(inDriver == gAudioServerPlugInDriverRef && inAddress && vm_device(inObjectID) && (inAddress->mSelector == 'vbst' || inAddress->mSelector == kAudioObjectPropertyCustomPropertyInfoList)) {
         if(!outData || !outDataSize) return kAudioHardwareIllegalOperationError;
         if(inAddress->mSelector=='vbst') {
             if(inDataSize<sizeof(CFStringRef)) return kAudioHardwareBadPropertySizeError;
@@ -2102,27 +2060,36 @@ static OSStatus	VoiceBridgeMic_GetDevicePropertyData(AudioServerPlugInDriverRef 
         *(AudioServerPlugInCustomPropertyInfo*)outData=(AudioServerPlugInCustomPropertyInfo){'vbst',kAudioServerPlugInCustomPropertyDataTypeCFString,kAudioServerPlugInCustomPropertyDataTypeNone};
         *outDataSize=sizeof(AudioServerPlugInCustomPropertyInfo);return 0;
     }
-    if(inObjectID == kObjectID_Device && inDriver == gAudioServerPlugInDriverRef) {
-        if(inAddress->mSelector == kAudioObjectPropertyControlList) { *outDataSize=0;return 0; }
-        if(inAddress->mSelector == kAudioObjectPropertyOwnedObjects) {
-            AudioObjectID ids[2]={kObjectID_Stream_Input,kObjectID_Stream_Output};
-            UInt32 n=inAddress->mScope==kAudioObjectPropertyScopeGlobal?2:1;
-            if(inAddress->mScope==kAudioObjectPropertyScopeOutput) ids[0]=kObjectID_Stream_Output;
-            if(n>inDataSize/sizeof(AudioObjectID)) n=inDataSize/sizeof(AudioObjectID);
-            memcpy(outData,ids,n*sizeof(AudioObjectID));*outDataSize=n*sizeof(AudioObjectID);return 0;
+    if(vm_device(inObjectID) && inDriver == gAudioServerPlugInDriverRef && inAddress && outDataSize) {
+        if(!outData && inDataSize) return kAudioHardwareIllegalOperationError;
+        AudioObjectPropertySelector selector=inAddress->mSelector;
+        if(selector==kAudioObjectPropertyControlList) {*outDataSize=0;return 0;}
+        if(selector==kAudioObjectPropertyOwnedObjects || selector==kAudioDevicePropertyStreams) {
+            UInt32 n=vm_scope(inObjectID,inAddress->mScope) && inDataSize>=sizeof(AudioObjectID)?1:0;
+            if(n)*(AudioObjectID*)outData=vm_stream(inObjectID);*outDataSize=n*sizeof(AudioObjectID);return 0;
         }
-        if(inAddress->mSelector == kAudioDevicePropertyDeviceCanBeDefaultSystemDevice ||
-           inAddress->mSelector == kAudioDevicePropertyDeviceCanBeDefaultDevice ||
-           inAddress->mSelector == kAudioDevicePropertyLatency) {
-            if(inDataSize<sizeof(UInt32)) return kAudioHardwareBadPropertySizeError;
+        if(selector==kAudioObjectPropertyName || selector==kAudioDevicePropertyDeviceUID) {
+            if(inDataSize<sizeof(CFStringRef))return kAudioHardwareBadPropertySizeError;
+            *(CFStringRef*)outData=selector==kAudioObjectPropertyName
+                ? (inObjectID==kObjectID_Feed?CFSTR("VoiceBridge Audio Feed"):CFSTR("VoiceBridge Microphone"))
+                : (inObjectID==kObjectID_Feed?CFSTR(kFeed_UID):CFSTR(kDevice_UID));
+            *outDataSize=sizeof(CFStringRef);return 0;
+        }
+        if(selector==kAudioDevicePropertyDeviceCanBeDefaultSystemDevice || selector==kAudioDevicePropertyDeviceCanBeDefaultDevice ||
+           selector==kAudioDevicePropertyLatency || selector==kAudioDevicePropertyIsHidden ||
+           selector==kAudioDevicePropertyDeviceIsRunning || selector==kAudioDevicePropertyClockDomain || selector==kAudioDevicePropertyRelatedDevices) {
+            if(inDataSize<sizeof(UInt32))return kAudioHardwareBadPropertySizeError;
             UInt32 value=0;
-            if(inAddress->mSelector==kAudioDevicePropertyDeviceCanBeDefaultDevice)
-                value=inAddress->mScope==kAudioObjectPropertyScopeInput;
-            if(inAddress->mSelector==kAudioDevicePropertyLatency)
-                value=inAddress->mScope==kAudioObjectPropertyScopeInput?VM_DELAY:0;
+            if(selector==kAudioDevicePropertyDeviceCanBeDefaultDevice)value=inObjectID==kObjectID_Device && inAddress->mScope==kAudioObjectPropertyScopeInput;
+            if(selector==kAudioDevicePropertyLatency)value=inObjectID==kObjectID_Device && inAddress->mScope==kAudioObjectPropertyScopeInput?VM_DELAY:0;
+            if(selector==kAudioDevicePropertyIsHidden)value=inObjectID==kObjectID_Feed;
+            if(selector==kAudioDevicePropertyClockDomain)value=0x56424D43; // Both devices share one clock.
+            if(selector==kAudioDevicePropertyRelatedDevices)value=inObjectID;
+            if(selector==kAudioDevicePropertyDeviceIsRunning){pthread_mutex_lock(&gPlugIn_StateMutex);value=gRunningByDevice[inObjectID==kObjectID_Feed]>0;pthread_mutex_unlock(&gPlugIn_StateMutex);}
             *(UInt32*)outData=value;*outDataSize=sizeof(UInt32);return 0;
         }
     }
+
 	#pragma unused(inClientProcessID, inQualifierDataSize, inQualifierData)
 	
 	//	declare the local variables
@@ -2135,7 +2102,7 @@ static OSStatus	VoiceBridgeMic_GetDevicePropertyData(AudioServerPlugInDriverRef 
 	FailWithAction(inAddress == NULL, theAnswer = kAudioHardwareIllegalOperationError, Done, "VoiceBridgeMic_GetDevicePropertyData: no address");
 	FailWithAction(outDataSize == NULL, theAnswer = kAudioHardwareIllegalOperationError, Done, "VoiceBridgeMic_GetDevicePropertyData: no place to put the return value size");
 	FailWithAction(outData == NULL, theAnswer = kAudioHardwareIllegalOperationError, Done, "VoiceBridgeMic_GetDevicePropertyData: no place to put the return value");
-	FailWithAction(inObjectID != kObjectID_Device, theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_GetDevicePropertyData: not the device object");
+	FailWithAction(!vm_device(inObjectID), theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_GetDevicePropertyData: not the device object");
 	
 	//	Note that for each object, this driver implements all the required properties plus a few
 	//	extras that are useful but not required.
@@ -2596,7 +2563,7 @@ static OSStatus	VoiceBridgeMic_SetDevicePropertyData(AudioServerPlugInDriverRef 
 	FailWithAction(inAddress == NULL, theAnswer = kAudioHardwareIllegalOperationError, Done, "VoiceBridgeMic_SetDevicePropertyData: no address");
 	FailWithAction(outNumberPropertiesChanged == NULL, theAnswer = kAudioHardwareIllegalOperationError, Done, "VoiceBridgeMic_SetDevicePropertyData: no place to return the number of properties that changed");
 	FailWithAction(outChangedAddresses == NULL, theAnswer = kAudioHardwareIllegalOperationError, Done, "VoiceBridgeMic_SetDevicePropertyData: no place to return the properties that changed");
-	FailWithAction(inObjectID != kObjectID_Device, theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_SetDevicePropertyData: not the device object");
+	FailWithAction(!vm_device(inObjectID), theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_SetDevicePropertyData: not the device object");
 	
 	//	initialize the returned number of changed properties
 	*outNumberPropertiesChanged = 0;
@@ -2851,7 +2818,7 @@ static OSStatus	VoiceBridgeMic_GetStreamPropertyData(AudioServerPlugInDriverRef 
 		case kAudioObjectPropertyOwner:
 			//	The stream's owner is the device object
 			FailWithAction(inDataSize < sizeof(AudioObjectID), theAnswer = kAudioHardwareBadPropertySizeError, Done, "VoiceBridgeMic_GetStreamPropertyData: not enough space for the return value of kAudioObjectPropertyOwner for the stream");
-			*((AudioObjectID*)outData) = kObjectID_Device;
+			*((AudioObjectID*)outData) = inObjectID==kObjectID_Stream_Output?kObjectID_Feed:kObjectID_Device;
 			*outDataSize = sizeof(AudioObjectID);
 			break;
 			
@@ -4044,7 +4011,7 @@ static OSStatus	VoiceBridgeMic_StartIO(AudioServerPlugInDriverRef inDriver, Audi
 	
 	//	check the arguments
 	FailWithAction(inDriver != gAudioServerPlugInDriverRef, theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_StartIO: bad driver reference");
-	FailWithAction(inDeviceObjectID != kObjectID_Device, theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_StartIO: bad device ID");
+	FailWithAction(!vm_device(inDeviceObjectID), theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_StartIO: bad device ID");
 
 	//	we need to hold the state lock
 	pthread_mutex_lock(&gPlugIn_StateMutex);
@@ -4073,6 +4040,7 @@ static OSStatus	VoiceBridgeMic_StartIO(AudioServerPlugInDriverRef inDriver, Audi
 		++gDevice_IOIsRunning;
 	}
 	
+	if(!theAnswer)++gRunningByDevice[inDeviceObjectID==kObjectID_Feed];
 	//	unlock the state lock
 	pthread_mutex_unlock(&gPlugIn_StateMutex);
 	
@@ -4092,13 +4060,13 @@ static OSStatus	VoiceBridgeMic_StopIO(AudioServerPlugInDriverRef inDriver, Audio
 	
 	//	check the arguments
 	FailWithAction(inDriver != gAudioServerPlugInDriverRef, theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_StopIO: bad driver reference");
-	FailWithAction(inDeviceObjectID != kObjectID_Device, theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_StopIO: bad device ID");
+	FailWithAction(!vm_device(inDeviceObjectID), theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_StopIO: bad device ID");
 
 	//	we need to hold the state lock
 	pthread_mutex_lock(&gPlugIn_StateMutex);
 	
 	//	figure out what we need to do
-	if(gDevice_IOIsRunning == 0)
+	if(gDevice_IOIsRunning == 0 || gRunningByDevice[inDeviceObjectID==kObjectID_Feed] == 0)
 	{
 		//	underflowing is an error
 		theAnswer = kAudioHardwareIllegalOperationError;
@@ -4114,6 +4082,7 @@ static OSStatus	VoiceBridgeMic_StopIO(AudioServerPlugInDriverRef inDriver, Audio
 		--gDevice_IOIsRunning;
 	}
 	
+	if(!theAnswer)--gRunningByDevice[inDeviceObjectID==kObjectID_Feed];
 	//	unlock the state lock
 	pthread_mutex_unlock(&gPlugIn_StateMutex);
 	
@@ -4143,7 +4112,7 @@ static OSStatus	VoiceBridgeMic_GetZeroTimeStamp(AudioServerPlugInDriverRef inDri
 	
 	//	check the arguments
 	FailWithAction(inDriver != gAudioServerPlugInDriverRef, theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_GetZeroTimeStamp: bad driver reference");
-	FailWithAction(inDeviceObjectID != kObjectID_Device, theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_GetZeroTimeStamp: bad device ID");
+	FailWithAction(!vm_device(inDeviceObjectID), theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_GetZeroTimeStamp: bad device ID");
 
 	//	we need to hold the locks
 	pthread_mutex_lock(&gDevice_IOMutex);
@@ -4186,7 +4155,7 @@ static OSStatus	VoiceBridgeMic_WillDoIOOperation(AudioServerPlugInDriverRef inDr
 	
 	//	check the arguments
 	FailWithAction(inDriver != gAudioServerPlugInDriverRef, theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_WillDoIOOperation: bad driver reference");
-	FailWithAction(inDeviceObjectID != kObjectID_Device, theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_WillDoIOOperation: bad device ID");
+	FailWithAction(!vm_device(inDeviceObjectID), theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_WillDoIOOperation: bad device ID");
 
 	//	figure out if we support the operation
 	bool willDo = false;
@@ -4194,12 +4163,12 @@ static OSStatus	VoiceBridgeMic_WillDoIOOperation(AudioServerPlugInDriverRef inDr
 	switch(inOperationID)
 	{
 		case kAudioServerPlugInIOOperationReadInput:
-			willDo = true;
+			willDo = inDeviceObjectID==kObjectID_Device;
 			willDoInPlace = true;
 			break;
 			
 		case kAudioServerPlugInIOOperationWriteMix:
-			willDo = true;
+			willDo = inDeviceObjectID==kObjectID_Feed;
 			willDoInPlace = true;
 			break;
 			
@@ -4231,7 +4200,7 @@ static OSStatus	VoiceBridgeMic_BeginIOOperation(AudioServerPlugInDriverRef inDri
 	
 	//	check the arguments
 	FailWithAction(inDriver != gAudioServerPlugInDriverRef, theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_BeginIOOperation: bad driver reference");
-	FailWithAction(inDeviceObjectID != kObjectID_Device, theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_BeginIOOperation: bad device ID");
+	FailWithAction(!vm_device(inDeviceObjectID), theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_BeginIOOperation: bad device ID");
 
 Done:
 	return theAnswer;
@@ -4249,9 +4218,12 @@ static OSStatus	VoiceBridgeMic_DoIOOperation(AudioServerPlugInDriverRef inDriver
 	
 	//	check the arguments
 	FailWithAction(inDriver != gAudioServerPlugInDriverRef, theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_DoIOOperation: bad driver reference");
-	FailWithAction(inDeviceObjectID != kObjectID_Device, theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_DoIOOperation: bad device ID");
+	FailWithAction(!vm_device(inDeviceObjectID), theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_DoIOOperation: bad device ID");
 	FailWithAction((inStreamObjectID != kObjectID_Stream_Input) && (inStreamObjectID != kObjectID_Stream_Output), theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_DoIOOperation: bad stream ID");
 
+    if(!((inDeviceObjectID==kObjectID_Device && inStreamObjectID==kObjectID_Stream_Input && inOperationID==kAudioServerPlugInIOOperationReadInput) ||
+         (inDeviceObjectID==kObjectID_Feed && inStreamObjectID==kObjectID_Stream_Output && inOperationID==kAudioServerPlugInIOOperationWriteMix)))
+        return kAudioHardwareUnsupportedOperationError;
     if(!inIOCycleInfo || !ioMainBuffer || inIOBufferFrameSize > VM_CAPACITY)
         return kAudioHardwareIllegalOperationError;
     Float64 time = inOperationID==kAudioServerPlugInIOOperationReadInput
@@ -4279,7 +4251,7 @@ static OSStatus	VoiceBridgeMic_EndIOOperation(AudioServerPlugInDriverRef inDrive
 	
 	//	check the arguments
 	FailWithAction(inDriver != gAudioServerPlugInDriverRef, theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_EndIOOperation: bad driver reference");
-	FailWithAction(inDeviceObjectID != kObjectID_Device, theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_EndIOOperation: bad device ID");
+	FailWithAction(!vm_device(inDeviceObjectID), theAnswer = kAudioHardwareBadObjectError, Done, "VoiceBridgeMic_EndIOOperation: bad device ID");
 
 Done:
 	return theAnswer;
