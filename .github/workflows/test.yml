@@ -1,0 +1,24 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Show toolchain
+        run: swift --version
+      - name: Audio core and diagnostics tests
+        run: bash test.sh
+      - name: Virtual microphone driver tests
+        run: bash VirtualMic/test.sh
+      - name: Build app and delay-check self-tests
+        run: bash LatencyCheck/build.sh
