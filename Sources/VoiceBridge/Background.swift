@@ -96,6 +96,7 @@ import SwiftUI
         window.deminiaturize(nil)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        model.meterVisible = true
         model.diagnostics?.event("diagnostics_shown")
     }
     @objc private func toggleMicrophone() {
@@ -106,7 +107,12 @@ import SwiftUI
     @objc private func toggleBypass() { model.setBypass(!model.bypass); updateMenu() }
     @objc private func showReports() { model.revealReports() }
     @objc private func quit() { NSApp.terminate(nil) }
+    // Closed, minimized, covered, or on another Space: stop redrawing the meter.
+    func windowDidChangeOcclusionState(_ notification: Notification) {
+        model.meterVisible = window.occlusionState.contains(.visible)
+    }
     func windowWillClose(_ notification: Notification) {
+        model.meterVisible = false
         model.saveSettings()
         model.diagnostics?.event("diagnostics_hidden", ["running": model.running, "sending": model.sending])
     }

@@ -2,22 +2,25 @@ import SwiftUI
 import AppKit
 import AudioCore
 struct LevelMeter: View {
-    let rms: Double
-    let peak: Double
+    @ObservedObject var level: Meter
     private func fraction(_ db: Double) -> Double { max(0,min(1,(db+70)/70)) }
     var body: some View {
         GeometryReader { box in
             ZStack(alignment:.leading) {
                 Rectangle().fill(Color.secondary.opacity(0.2))
-                Rectangle().fill(Color.green).frame(width:box.size.width*fraction(rms))
-                Rectangle().fill(Color.orange).frame(width:2).offset(x:max(0,(box.size.width-2)*fraction(peak)))
+                Rectangle().fill(Color.green).frame(width:box.size.width*fraction(level.rms))
+                Rectangle().fill(Color.orange).frame(width:2).offset(x:max(0,(box.size.width-2)*fraction(level.peak)))
             }
         }.frame(height:10)
         .transaction { $0.animation=nil; $0.disablesAnimations=true }
         .accessibilityElement(children:.ignore)
         .accessibilityLabel("Live microphone level")
-        .accessibilityValue(String(format:"RMS %.1f, peak %.1f decibels",rms,peak))
+        .accessibilityValue(String(format:"RMS %.1f, peak %.1f decibels",level.rms,level.peak))
     }
+}
+struct LevelReadout: View {
+    @ObservedObject var level: Meter
+    var body: some View { Text(String(format:"RMS %.1f dBFS / Peak %.1f",level.rms,level.peak)).monospacedDigit() }
 }
 struct Panel: View {
     @ObservedObject var model: Model
@@ -53,8 +56,8 @@ struct Panel: View {
             Text(model.status).font(.headline).textSelection(.enabled)
             GroupBox("Live diagnostics") {
                 VStack(alignment:.leading,spacing:8) {
-                    HStack{Text(model.bypass ? "Bypassed mic" : "Processed mic");Spacer();Text(String(format:"RMS %.1f dBFS / Peak %.1f",model.meter,model.peak)).monospacedDigit()}
-                    LevelMeter(rms:model.meter,peak:model.peak)
+                    HStack{Text(model.bypass ? "Bypassed mic" : "Processed mic");Spacer();LevelReadout(level:model.level)}
+                    LevelMeter(level:model.level)
                     Text("Green: current level · Orange: current peak · No display smoothing").font(.caption).foregroundStyle(.secondary)
                     Text(model.health).foregroundStyle(.secondary)
                     Text(model.details).font(.system(.caption,design:.monospaced)).textSelection(.enabled).fixedSize(horizontal:false,vertical:true)

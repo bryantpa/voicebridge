@@ -3,6 +3,11 @@ import AppKit
 import AVFoundation
 import AudioCore
 import CoreAudio
+// Separate from Model so 60 Hz level updates redraw only the meter, not the whole panel.
+@MainActor final class Meter: ObservableObject {
+    @Published var rms: Double = -120
+    @Published var peak: Double = -120
+}
 @MainActor final class Model: ObservableObject {
     @Published var devices: [Device] = []
     @Published var micUID = ""
@@ -23,8 +28,9 @@ import CoreAudio
     @Published var recording = false
     @Published var recordingSeconds: Double = 0
     @Published var recordingStatus = "No audio recorded this session."
-    @Published var meter: Double = -120
-    @Published var peak: Double = -120
+    let level = Meter()
+    // Set by the window delegate; the meter is not redrawn while nobody can see it.
+    var meterVisible = true
     @Published var details = "No audio captured."
     @Published var setupWaiting = false
     @Published var setupMessage = ""
@@ -174,7 +180,7 @@ import CoreAudio
         if recording { finishClip() }
         if let e=engine { diagnostics?.event("engine_stopping",statsJSON(vb_stats(e)));vb_destroy(e);engine=nil }
         if let activity=audioActivity { ProcessInfo.processInfo.endActivity(activity);audioActivity=nil }
-        running=false;starting=false;meter = -120;peak = -120;health="Capture stopped.";details="No live audio measurements.";status=reason;diagnostics?.event("engine_stopped",["reason":reason])
+        running=false;starting=false;level.rms = -120;level.peak = -120;health="Capture stopped.";details="No live audio measurements.";status=reason;diagnostics?.event("engine_stopped",["reason":reason])
     }
     func setBypass(_ value: Bool) {
         guard let e=engine else { return }
@@ -187,9 +193,11 @@ import CoreAudio
     }
     func updateMeter() {
         guard let e=engine else{return};let s=vb_stats(e)
-        // Show the latest completed block directly: no visual decay or animation.
-        meter=s.rms_db;peak=s.peak_db
+        // Logged metrics keep sampling while hidden; only the display pauses.
         windowPeak=max(windowPeak,s.peak_db);windowRMS=max(windowRMS,s.rms_db)
+        guard meterVisible else {return}
+        // Show the latest completed block directly: no visual decay or animation.
+        level.rms=s.rms_db;level.peak=s.peak_db
     }
     func tick() {
         checkMicrophoneSetup()
