@@ -165,4 +165,4 @@ VoiceBridge combines a custom app and transport with established DSP implementat
 - Apple's audio-server-driver sample supplies the driver scaffolding: [MIT notice](VirtualMic/APPLE-LICENSE.txt), [source and modifications](VirtualMic/PROVENANCE.txt).
 - The app icon was AI-generated; its [source prompt](Assets/ICON-PROMPT.txt) is included.
 
-Third-party license terms remain with their respective files. A license for the original VoiceBridge code has not yet been selected; public availability alone does not grant a general reuse license.
+The original VoiceBridge code is released under the [MIT License](LICENSE). Third-party license terms remain with their respective files.
